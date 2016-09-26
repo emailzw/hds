@@ -11,14 +11,16 @@ import (
 )
 
 var (
-	db       *sql.DB
-	err      error
-	redisCon redis.Conn
+	db        *sql.DB
+	err       error
+	redisCon0 redis.Conn
+	redisCon1 redis.Conn
 )
 
 func main() {
 	defer db.Close()
-	defer redisCon.Close()
+	defer redisCon0.Close()
+	defer redisCon1.Close()
 	var rows *sql.Rows
 	var records []map[string]string
 	rows, err = db.Query("SELECT * FROM distributor ")
@@ -39,34 +41,41 @@ func main() {
 		if err != nil {
 			panic(err.Error())
 		}
-		var value string
 		for i, col := range values {
 			if col == nil {
-				value = "NULL"
 			} else {
-				value = string(col.([]byte))
 				tmp_map[columns[i]] = string(col.([]byte))
-				records = append(records, tmp_map)
 			}
-			fmt.Println(columns[i], ":", value)
 		}
+		records = append(records, tmp_map)
 	}
 	if err = rows.Err(); err != nil {
 		panic(err.Error())
 	}
-	toredis()
+
+	for _, item := range records {
+		custno := item["custno"]
+		upline := item["upline"]
+		redisCon0.Do("SADD", upline, custno)
+
+		for k, v := range item {
+			redisCon1.Do("HMSET", "CUST:"+custno, k, v)
+		}
+	}
+
+	//toredis()
 }
 
 func toredis() {
-	size, err := redisCon.Do("DBSIZE")
+	size, err := redisCon0.Do("DBSIZE")
 	if err != nil {
 		log.Fatal("redis operator error")
 	}
 	fmt.Printf("redis  size is %d \n", size)
 
-	redisCon.Do("SET", "name", "jerry")
-	res, _ := redisCon.Do("GET", "name")
-	fmt.Print("the key of name is %s \n", string(res.([]byte)))
+	redisCon0.Do("SET", "name", "jerry")
+	res, _ := redisCon0.Do("GET", "name")
+	fmt.Printf("the key of name is %s \n", string(res.([]byte)))
 
 }
 
@@ -85,10 +94,21 @@ func init() {
 		log.Fatal("db connection error!!!")
 	}
 
-	redisCon, err = redis.DialTimeout("tcp", "43.254.151.243:6379", 0, 1*time.Second, 1*time.Second)
+	redisCon0, err = redis.DialTimeout("tcp", "43.254.151.243:6379", 0, 1*time.Second, 1*time.Second)
 
 	if err != nil {
 		log.Fatal("redis connecting error!")
 		panic("redis connecting error!!!!!")
+	}
+
+	redisCon1, err = redis.DialTimeout("tcp", "43.254.151.243:6379", 0, 1*time.Second, 1*time.Second)
+	if err != nil {
+		log.Fatal("redis connecting error!")
+		panic("redis connecting error!!!!!")
+	}
+	_, err := redisCon1.Do("SELECT", "1")
+	if err != nil {
+		log.Fatal("redis db1 changing error!")
+		panic(err)
 	}
 }
