@@ -17,7 +17,7 @@ var (
 	redisCon1 redis.Conn
 )
 
-func main() {
+func _main() {
 	defer db.Close()
 	defer redisCon0.Close()
 	defer redisCon1.Close()
