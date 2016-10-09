@@ -11,7 +11,7 @@ import (
 
 var ()
 
-func main() {
+func _main() {
 	db, err := gorm.Open("mysql", "hds:hds@/hds?charset=utf8&parseTime=True&loc=Local")
 	checkError(err)
 	cust := &model.Customer{}
@@ -19,7 +19,7 @@ func main() {
 	defer db.Close()
 	db.First(&cust)
 	db.Find(&custs)
-	fmt.Println(cust)
+	fmt.Println(cust.CustID)
 	fmt.Println(len(custs))
 }
 

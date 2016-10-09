@@ -1,69 +1,86 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
+	"hds/model"
 	"log"
+	"os"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/mysql"
 )
 
 var (
-	db        *sql.DB
+	db        *gorm.DB
 	err       error
 	redisCon0 redis.Conn
 	redisCon1 redis.Conn
+	counter   int
 )
 
-func _main() {
+func main() {
+
+	db.LogMode(true)
+	db.SetLogger(log.New(os.Stdout, "\r\n", 0))
+
 	defer db.Close()
-	defer redisCon0.Close()
+	/* defer redisCon0.Close()*/
+	/*defer redisCon1.Close()*/
+
+	custs := []model.Customer{}
+	db.Limit(100000000).Find(&custs)
+
+	fmt.Println(len(custs))
+	fmt.Println(custs[100])
+	ct := len(custs)
+	/*ct = 10000*/
+	//5个线程并发
+	concurr_factor := 30
+	fact := ct / concurr_factor
+	for i := 0; i < concurr_factor; i++ {
+		if i+1 < concurr_factor {
+			go func(i2 int, fact2 int, custs2 []model.Customer, ct2 int) {
+				toRedis(i2*fact2, i2*fact2+fact2, custs2)
+			}(i, fact, custs, ct)
+		} else {
+			go func(i int, fact int, custs []model.Customer, ct int) {
+				toRedis(i*fact, ct, custs)
+			}(i, fact, custs, ct)
+		}
+	}
+	/*var input string*/
+	/*fmt.Scan(&input)*/
+	/*fmt.Println("counter", counter)*/
+	select {}
+}
+
+func toRedis(from int, to int, queue []model.Customer) {
+	fmt.Printf("from:%d,to:%d\n", from, to)
+	redisCon0 := getRedisConnection(0)
+	redisCon1 := getRedisConnection(1)
 	defer redisCon1.Close()
-	var rows *sql.Rows
-	var records []map[string]string
-	rows, err = db.Query("SELECT * FROM distributor ")
-	checkError(err)
-	columns, err := rows.Columns()
-	if err != nil {
-		panic(err.Error())
-	}
-	values := make([]interface{}, len(columns))
-	scanArgs := make([]interface{}, len(values))
-	for i := range values {
-		scanArgs[i] = &values[i]
-	}
-	var tmp_map map[string]string
-	for rows.Next() {
-		tmp_map = make(map[string]string)
-		err = rows.Scan(scanArgs...)
+	defer redisCon0.Close()
+	for i := from; i < to; i++ {
+		counter++
+		item := queue[i]
+		/*fmt.Println(i)*/
+		redisCon0.Do("SADD", item.Upline, item.CustID)
+		_, err := redisCon1.Do("HMSET", "CUST:"+item.CustID, "ID", item.CustID)
 		if err != nil {
-			panic(err.Error())
+			fmt.Println(err)
 		}
-		for i, col := range values {
-			if col == nil {
-			} else {
-				tmp_map[columns[i]] = string(col.([]byte))
-			}
+		redisCon1.Do("HMSET", "CUST:"+item.CustID, "CustID", item.CustID)
+		if err != nil {
+			fmt.Println(err)
 		}
-		records = append(records, tmp_map)
-	}
-	if err = rows.Err(); err != nil {
-		panic(err.Error())
-	}
-
-	for _, item := range records {
-		custno := item["custno"]
-		upline := item["upline"]
-		redisCon0.Do("SADD", upline, custno)
-
-		for k, v := range item {
-			redisCon1.Do("HMSET", "CUST:"+custno, k, v)
+		redisCon1.Do("HMSET", "CUST:"+item.CustID, "CustomerName", item.CustomerName)
+		if err != nil {
+			fmt.Println(err)
 		}
 	}
-
-	//toredis()
 }
 
 func toredis() {
@@ -87,21 +104,16 @@ func checkError(err error) {
 }
 
 func init() {
-	db, err = sql.Open("mysql", "hds:hds@tcp(43.254.151.243:3307)/hds?charset=utf8")
-	db.SetMaxOpenConns(2000)
-	db.SetMaxIdleConns(1000)
-	if err = db.Ping(); err != nil {
-		log.Fatal("db connection error!!!")
-	}
+	db, err = gorm.Open("mysql", "hds:hds@/hds?charset=utf8&parseTime=True&loc=Local")
 
-	redisCon0, err = redis.DialTimeout("tcp", "43.254.151.243:6379", 0, 1*time.Second, 1*time.Second)
+	redisCon0, err = redis.DialTimeout("tcp", "127.0.0.1:6379", 0, 1*time.Second, 1*time.Second)
 
 	if err != nil {
 		log.Fatal("redis connecting error!")
 		panic("redis connecting error!!!!!")
 	}
 
-	redisCon1, err = redis.DialTimeout("tcp", "43.254.151.243:6379", 0, 1*time.Second, 1*time.Second)
+	redisCon1, err = redis.DialTimeout("tcp", "127.0.0.1:6379", 0, 1*time.Second, 1*time.Second)
 	if err != nil {
 		log.Fatal("redis connecting error!")
 		panic("redis connecting error!!!!!")
@@ -111,4 +123,21 @@ func init() {
 		log.Fatal("redis db1 changing error!")
 		panic(err)
 	}
+}
+
+func getRedisConnection(db int) redis.Conn {
+
+	redisCon, err := redis.DialTimeout("tcp", "127.0.0.1:6379", 0, 1*time.Second, 1*time.Second)
+
+	if err != nil {
+		log.Fatal("redis connecting error!")
+		panic("redis connecting error!!!!!")
+	}
+
+	_, err = redisCon.Do("SELECT", db)
+	if err != nil {
+		log.Fatal("redis db changing error!", db)
+		panic(err)
+	}
+	return redisCon
 }
