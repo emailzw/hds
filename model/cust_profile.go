@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type Customer struct {
 	ID           int       `gorm:"column:CustomerProfileID"`
@@ -14,6 +17,16 @@ type Customer struct {
 }
 
 func (c Customer) TableName() string {
-	return "customerprofile_cls"
+	return "customerprofile"
 
 }
+
+func (c Customer) String() string {
+	return fmt.Sprintf("%s-%s-%s", c.CustID, c.CustomerName, c.CustType)
+}
+
+type ByCustID []Customer
+
+func (a ByCustID) Len() int           { return len(a) }
+func (a ByCustID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByCustID) Less(i, j int) bool { return a[i].CustID < a[j].CustID }

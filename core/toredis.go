@@ -19,26 +19,26 @@ var (
 	redisCon0 redis.Conn
 	redisCon1 redis.Conn
 	counter   int
+	jobStatus chan string
 )
 
-func main() {
+func LoadData() {
 
 	db.LogMode(true)
 	db.SetLogger(log.New(os.Stdout, "\r\n", 0))
 
 	defer db.Close()
-	/* defer redisCon0.Close()*/
-	/*defer redisCon1.Close()*/
 
 	custs := []model.Customer{}
-	db.Limit(100000000).Find(&custs)
+	db.Debug().Limit(10000000).Find(&custs)
 
 	fmt.Println(len(custs))
 	fmt.Println(custs[100])
 	ct := len(custs)
 	/*ct = 10000*/
 	//5个线程并发
-	concurr_factor := 30
+	concurr_factor := 100
+	jobStatus = make(chan string)
 	fact := ct / concurr_factor
 	for i := 0; i < concurr_factor; i++ {
 		if i+1 < concurr_factor {
@@ -51,14 +51,16 @@ func main() {
 			}(i, fact, custs, ct)
 		}
 	}
-	/*var input string*/
-	/*fmt.Scan(&input)*/
-	/*fmt.Println("counter", counter)*/
-	select {}
+	for i := 0; i < concurr_factor; i++ {
+		select {
+		case msg := <-jobStatus:
+			fmt.Println(msg)
+		}
+	}
+	fmt.Println("total finished,counter", counter)
 }
 
 func toRedis(from int, to int, queue []model.Customer) {
-	fmt.Printf("from:%d,to:%d\n", from, to)
 	redisCon0 := getRedisConnection(0)
 	redisCon1 := getRedisConnection(1)
 	defer redisCon1.Close()
@@ -72,30 +74,21 @@ func toRedis(from int, to int, queue []model.Customer) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		redisCon1.Do("HMSET", "CUST:"+item.CustID, "CustID", item.CustID)
+		_, err = redisCon1.Do("HMSET", "CUST:"+item.CustID, "CustID", item.CustID)
 		if err != nil {
 			fmt.Println(err)
 		}
-		redisCon1.Do("HMSET", "CUST:"+item.CustID, "CustomerName", item.CustomerName)
+		_, err = redisCon1.Do("HMSET", "CUST:"+item.CustID, "CustomerName", item.CustomerName)
+		if err != nil {
+			fmt.Println(err)
+		}
+		_, err = redisCon1.Do("HMSET", "CUST:"+item.CustID, "CustType", item.CustType)
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
+	jobStatus <- fmt.Sprintf("job:%d-%d finished", from, to)
 }
-
-func toredis() {
-	size, err := redisCon0.Do("DBSIZE")
-	if err != nil {
-		log.Fatal("redis operator error")
-	}
-	fmt.Printf("redis  size is %d \n", size)
-
-	redisCon0.Do("SET", "name", "jerry")
-	res, _ := redisCon0.Do("GET", "name")
-	fmt.Printf("the key of name is %s \n", string(res.([]byte)))
-
-}
-
 func checkError(err error) {
 	if err != nil {
 		log.Fatal(err)
@@ -105,6 +98,10 @@ func checkError(err error) {
 
 func init() {
 	db, err = gorm.Open("mysql", "hds:hds@/hds?charset=utf8&parseTime=True&loc=Local")
+	if err != nil {
+		log.Fatal("mysql connecting error!", err)
+		panic("redis connecting error!!!!!")
+	}
 
 	redisCon0, err = redis.DialTimeout("tcp", "127.0.0.1:6379", 0, 1*time.Second, 1*time.Second)
 
