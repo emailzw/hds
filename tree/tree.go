@@ -21,12 +21,16 @@ func NewTreeNode(custid string) *TreeNode {
 
 type treeAction func(tree *TreeNode)
 
-func TravelTree(node *TreeNode, walk treeAction) {
+func (node *TreeNode) TravelTree(walk treeAction) {
 	if node == nil {
 		return
 	}
 	walk(node)
 	for _, child := range node.Leafs {
-		TravelTree(child, walk)
+		if child == nil {
+			return
+		} else {
+			child.TravelTree(walk)
+		}
 	}
 }
