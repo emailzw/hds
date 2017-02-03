@@ -1,8 +1,9 @@
-package main
+package core
 
 import (
 	"fmt"
 	"hds/model"
+	"hds/utils"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jinzhu/gorm"
@@ -13,7 +14,7 @@ var ()
 
 func _main() {
 	db, err := gorm.Open("mysql", "hds:hds@/hds?charset=utf8&parseTime=True&loc=Local")
-	checkError(err)
+	utils.CheckError(err)
 	cust := &model.Customer{}
 	custs := []model.Customer{}
 	defer db.Close()

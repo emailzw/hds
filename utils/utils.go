@@ -21,7 +21,7 @@ func CheckError(err error) {
 
 func GetRedisConnection(db int) redis.Conn {
 
-	redisCon, err := redis.DialTimeout("tcp", "127.0.0.1:6379", 0, 1*time.Second, 1*time.Second)
+	redisCon, err := redis.DialTimeout("tcp", "43.254.151.243:6379", 0, 1*time.Second, 1*time.Second)
 
 	if err != nil {
 		log.Fatal("redis connecting error!")
@@ -37,7 +37,7 @@ func GetRedisConnection(db int) redis.Conn {
 }
 
 func GetMainDBConnection() *gorm.DB {
-	db, err := gorm.Open("mysql", "hds:hds@/hds?charset=utf8&parseTime=True&loc=Local")
+	db, err := gorm.Open("mysql", "hds:hds@tcp(43.254.151.243:3307)/hds?charset=utf8&parseTime=True&loc=Local")
 	CheckError(err)
 	return db
 }
